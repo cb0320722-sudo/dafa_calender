@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>DAFA打發 活動月曆</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -134,7 +135,17 @@
   .sw.closed{ background:var(--closed); }
   .sw.open{ background:var(--cream); }
 
-  #stage{ width:480px; }
+  #stageWrap{
+    width:100%;
+    max-width:480px;
+    margin:0 auto;
+    position:relative;
+  }
+  #stage{
+    width:480px;
+    height:480px;
+    transform-origin: top left;
+  }
 
   #card{
     width:480px;
@@ -168,6 +179,24 @@
     user-select:none;
   }
   .drag-handle:active{ cursor:grabbing; }
+
+  .center-handle{
+    position:absolute;
+    top:-10px; left:-10px;
+    width:24px; height:24px;
+    background:#fff;
+    color:var(--ink);
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    cursor:pointer;
+    z-index:20;
+    border:2px solid var(--ink);
+    user-select:none;
+  }
+  .center-handle:active{ transform:scale(0.9); }
 
   #titleBlock{
     left:16px; top:16px; width:448px;
@@ -326,7 +355,7 @@
   }
 
   @media (max-width:500px){
-    #stage{ width:92vw; }
+    body{ padding:16px 10px 50px; }
   }
 </style>
 </head>
@@ -365,6 +394,7 @@
     <span><i class="sw open"></i>正常營業</span>
   </div>
 
+  <div id="stageWrap">
   <div id="stage">
     <div id="card">
 
@@ -374,7 +404,8 @@
       </div>
 
       <div id="noteBlock" class="drag-block">
-        <div class="drag-handle">⠿</div>
+        <div class="drag-handle" title="拖曳移動">⠿</div>
+        <div class="center-handle" title="水平置中" data-target="noteBlock">↔</div>
         <div class="note-cell">
           <div class="note-title" contenteditable="true" id="noteTitle">咖啡廳營業時間</div>
           <div class="note-sub" contenteditable="true" id="noteSub1">平日 12:00–19:00</div>
@@ -582,6 +613,25 @@
   makeDraggable(document.getElementById('titleBlock'), document.getElementById('titleBlock').querySelector('.drag-handle'), 'title');
   makeDraggable(document.getElementById('noteBlock'), document.getElementById('noteBlock').querySelector('.drag-handle'), 'note');
 
+  // ---- center align ----
+  function centerBlock(blockId, posKey){
+    const block = document.getElementById(blockId);
+    const card = document.getElementById('card');
+    const blockWidth = block.getBoundingClientRect().width;
+    const cardWidth = card.getBoundingClientRect().width;
+    const newLeft = Math.round((cardWidth - blockWidth) / 2);
+    block.style.left = newLeft + 'px';
+    uiState.positions[posKey] = Object.assign({}, uiState.positions[posKey], { left:newLeft });
+    scheduleSave();
+  }
+  document.querySelectorAll('.center-handle').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const targetId = btn.getAttribute('data-target');
+      const posKey = targetId === 'titleBlock' ? 'title' : 'note';
+      centerBlock(targetId, posKey);
+    });
+  });
+
   // ---- autosave (window.storage) ----
   let saveTimer = null;
   const saveStatusEl = document.getElementById('saveStatus');
@@ -665,7 +715,7 @@
       const canvas = await html2canvas(card, {
         scale: 2.25,
         backgroundColor: '#ffffff', useCORS:true,
-        ignoreElements: (el)=> el.classList && el.classList.contains('drag-handle')
+        ignoreElements: (el)=> el.classList && (el.classList.contains('drag-handle') || el.classList.contains('center-handle'))
       });
       const year = yearSelect.value, month = monthNamesCn[monthSelect.value];
       const filename = `DAFA打發-活動月曆-${year}${month}-IG.png`;
