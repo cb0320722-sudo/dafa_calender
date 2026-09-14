@@ -135,6 +135,14 @@
   .de-tog{flex:1;border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:11px;font-family:inherit;font-size:14px;font-weight:800;color:var(--ink);cursor:pointer;}
   .de-tog.on{background:#EAD9C4;border-color:#c9a578;color:#7a5a33;}
   .de-idea{flex:1;border:1.5px dashed var(--title);background:#fff;border-radius:10px;padding:11px;font-family:inherit;font-size:14px;font-weight:800;color:#b4470e;cursor:pointer;}
+  .de-repeat{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .de-lbl{font-size:13px;font-weight:800;color:var(--ink);}
+  .de-r{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-family:inherit;font-size:13px;font-weight:700;color:var(--ink);cursor:pointer;}
+  .de-r.on{background:var(--title);border-color:var(--title);color:#fff;}
+  .de-r:disabled{opacity:.5;}
+  .recurlist{display:flex;flex-direction:column;gap:7px;}
+  .rrow{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:9px 11px;font-size:13px;font-weight:700;color:var(--ink);}
+  .rrow button{border:1.5px solid #e2b3ab;background:#fff;color:#b0492f;border-radius:8px;padding:6px 11px;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;}
   .de-note{font-size:11.5px;color:var(--ink-soft);margin:8px 0 0;line-height:1.5;}
   .clearbtn{width:100%;margin-top:12px;border:1.5px solid var(--line);background:#fff;border-radius:10px;
     padding:11px;font-family:inherit;font-size:13px;font-weight:700;color:#b0492f;cursor:pointer;}
@@ -208,13 +216,18 @@
   <!-- tap hint + inline editor -->
   <div class="sec">
     <h2>編輯活動</h2>
-    <p class="sub">直接<b>點日曆上的日期</b>，下面就會出現那天的編輯欄。每週二為固定公休；其他天可另外設為休假。</p>
+    <p class="sub">直接<b>點日曆上的日期</b>，下面就會出現那天的編輯欄，可輸入活動、設休假、設定重複。每週二為固定公休。</p>
     <div id="dayEdit" class="dayedit" style="display:none;">
       <div class="de-head"><span id="deTitle">—</span><button id="deClose" class="de-x">×</button></div>
       <input class="ev" id="deInput" type="text" placeholder="輸入活動內容（例：桌遊午後・限6人）">
+      <div class="de-repeat">
+        <span class="de-lbl">重複</span>
+        <button class="de-r" data-r="none">單次</button>
+        <button class="de-r" data-r="weekly" id="deRw">每週</button>
+        <button class="de-r" data-r="monthly" id="deRm">每月</button>
+      </div>
       <div class="de-btns">
         <button id="deOff" class="de-tog">設為休假</button>
-        <button id="deIdea" class="de-idea">💡 活動靈感</button>
       </div>
       <p class="de-note" id="deNote"></p>
     </div>
@@ -222,11 +235,18 @@
     <button class="clearbtn" id="clearBtn">清空本月所有活動與休假</button>
   </div>
 
+  <!-- recurring -->
+  <div class="sec" id="recurSec" style="display:none;">
+    <h2>重複的活動</h2>
+    <p class="sub">這些活動會自動套用到整月對應的日期。可在這裡刪除。</p>
+    <div id="recurList" class="recurlist"></div>
+  </div>
+
   <!-- ideas -->
   <div class="sec">
     <h2>活動靈感</h2>
-    <p class="sub">依你的店況設計（內用 3 桌 · 每桌 2 人 · 活動最多 6 人；提供飲品、甜點、廁所；營業 11:00–18:00）。點下方按鈕瀏覽，或在每天的 💡 直接填入。</p>
-    <button class="ideabtn" id="ideaBrowse">💡 看活動靈感 / 填入某一天</button>
+    <p class="sub">依你的店況設計（內用 3 桌 · 每桌 2 人 · 活動最多 6 人；提供飲品、甜點、廁所；營業 11:00–18:00）。點下方按鈕瀏覽，選一個活動再填入日期。</p>
+    <button class="ideabtn" id="ideaBrowse">看活動靈感 · 填入某一天</button>
   </div>
 
 </div>
@@ -292,6 +312,13 @@
   function isTue(d){ return new Date(year,month-1,d).getDay()===2; }
   // 回傳當天狀態：'closed'(每週二固定公休) | 'off'(手動休假) | '' (營業)
   function dayState(d){ if(isTue(d)) return 'closed'; var o=cur().days[d]||{}; return o.off?'off':''; }
+  function recur(){ if(!data._recur) data._recur=[]; return data._recur; }
+  function ruleText(d){
+    var date=d, wd=new Date(year,month-1,d).getDay(), mt=null, wt=null;
+    recur().forEach(function(r){ if(r.type==='monthly'&&r.k===date) mt=r.text; else if(r.type==='weekly'&&r.k===wd) wt=r.text; });
+    return mt!=null?mt:(wt!=null?wt:'');
+  }
+  function effText(d){ var o=cur().days[d]||{}; if(o.text) return o.text; return ruleText(d); }
 
   /* ---- selectors ---- */
   (function(){
@@ -368,11 +395,11 @@
     var html='';
     for(var i=0;i<fw;i++) html+='<div class="cell empty"></div>';
     for(var d=1;d<=total;d++){
-      var o=c.days[d]||{}, st=dayState(d), tag='';
+      var st=dayState(d), tag='', txt=(st===''?effText(d):'');
       if(st==='closed') tag='<div class="tag">公休</div>';
       else if(st==='off') tag='<div class="tag">休假</div>';
       var cls='cell'+(st==='closed'?' closed':'')+(st==='off'?' off':'')+(selDay===d?' sel':'');
-      html+='<div class="'+cls+'" data-d="'+d+'"><div class="dn">'+d+'</div>'+tag+'<div class="ev">'+esc(o.text||'')+'</div></div>';
+      html+='<div class="'+cls+'" data-d="'+d+'"><div class="dn">'+d+'</div>'+tag+'<div class="ev">'+esc(txt)+'</div></div>';
     }
     $('#cGrid').innerHTML=html;
   }
@@ -389,11 +416,22 @@
     $('#tapHint').style.display='none';
     $('#dayEdit').style.display='block';
     $('#deTitle').textContent=month+'月'+d+'日（週'+WD[wd]+'）';
-    var inp=$('#deInput'); inp.value=o.text||''; inp.disabled=tue;
+    var inp=$('#deInput'); inp.value=(o.text?o.text:ruleText(d)); inp.disabled=tue;
     var offBtn=$('#deOff');
     if(tue){ offBtn.textContent='每週二固定公休'; offBtn.disabled=true; offBtn.classList.add('on'); }
     else { offBtn.disabled=false; offBtn.classList.toggle('on', !!o.off); offBtn.textContent=o.off?'休假中（點取消）':'設為休假'; }
-    $('#deNote').textContent = tue ? '每週二為固定公休，這天不顯示活動。' : (o.off?'這天標示為休假。':'');
+    // repeat buttons
+    var rw=false, rm=false;
+    recur().forEach(function(r){ if(r.type==='weekly'&&r.k===wd) rw=true; if(r.type==='monthly'&&r.k===d) rm=true; });
+    $('#deRw').textContent='每週'+WD[wd]; $('#deRm').textContent='每月'+d+'號';
+    Array.prototype.forEach.call(document.querySelectorAll('#dayEdit .de-r'),function(b){
+      var t=b.getAttribute('data-r');
+      b.disabled=tue;
+      b.classList.toggle('on', (t==='weekly'&&rw)||(t==='monthly'&&rm)||(t==='none'&&!rw&&!rm));
+    });
+    var note = tue ? '每週二為固定公休，這天不顯示活動。' : (o.off?'這天標示為休假。':'');
+    if(!tue && !o.text && ruleText(d)) note = '此活動來自重複設定，整月對應日期都會顯示。' + note;
+    $('#deNote').textContent = note;
   }
   $('#deInput').addEventListener('input',function(){
     if(selDay==null) return; var c=cur(); c.days[selDay]=c.days[selDay]||{}; c.days[selDay].text=this.value; save(); renderGrid();
@@ -402,8 +440,38 @@
     if(selDay==null||isTue(selDay)) return; var c=cur(); c.days[selDay]=c.days[selDay]||{};
     c.days[selDay].off=!c.days[selDay].off; save(); renderGrid(); openDayEdit();
   };
-  $('#deIdea').onclick=function(){ if(selDay!=null) openIdeas(selDay); };
   $('#deClose').onclick=function(){ selDay=null; $('#dayEdit').style.display='none'; $('#tapHint').style.display='block'; renderGrid(); };
+
+  Array.prototype.forEach.call(document.querySelectorAll('#dayEdit .de-r'),function(b){
+    b.onclick=function(){
+      if(selDay==null||isTue(selDay)) return;
+      var d=selDay, wd=new Date(year,month-1,d).getDay(), type=b.getAttribute('data-r');
+      var txt=$('#deInput').value.trim(), c=cur();
+      // 先移除此日對應的既有重複規則（同星期的每週 / 同日期的每月）
+      data._recur=recur().filter(function(r){ return !((r.type==='weekly'&&r.k===wd)||(r.type==='monthly'&&r.k===d)); });
+      if(type==='none'){
+        c.days[d]=c.days[d]||{}; c.days[d].text=txt;   // 保留為這天的單次活動
+      } else {
+        if(!txt){ alert('請先輸入活動內容，再設定重複'); openDayEdit(); return; }
+        data._recur.push({type:type, k:(type==='weekly'?wd:d), text:txt});
+        c.days[d]=c.days[d]||{}; c.days[d].text='';     // 交給重複規則顯示
+      }
+      save(); renderGrid(); openDayEdit(); renderRecur();
+    };
+  });
+
+  function renderRecur(){
+    var rs=recur(), sec=$('#recurSec');
+    if(!rs.length){ sec.style.display='none'; return; }
+    sec.style.display='block';
+    $('#recurList').innerHTML=rs.map(function(r,i){
+      var label=r.type==='weekly'?('每週'+WD[r.k]):('每月'+r.k+'號');
+      return '<div class="rrow"><span>'+label+' · '+esc(r.text)+'</span><button data-i="'+i+'">刪除</button></div>';
+    }).join('');
+    Array.prototype.forEach.call($('#recurList').querySelectorAll('button'),function(b){
+      b.onclick=function(){ recur().splice(+b.getAttribute('data-i'),1); save(); renderGrid(); renderRecur(); if(selDay!=null&&!isTue(selDay)) openDayEdit(); };
+    });
+  }
 
   $('#clearBtn').onclick=function(){
     if(!confirm('確定清空本月所有活動與休假設定？（每週二固定公休不受影響）')) return;
@@ -473,10 +541,11 @@
     cur();
     renderSwatches(); applyColor();
     renderWkQuick();
-    renderGrid();
+    renderGrid(); renderRecur();
     selDay=null; if($('#dayEdit')){ $('#dayEdit').style.display='none'; } if($('#tapHint')){ $('#tapHint').style.display='block'; }
     fitStage();
   }
+  buildIdeas();
   renderAll();
 })();
 </script>
